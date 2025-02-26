@@ -182,15 +182,35 @@ def analyze_files(files, analysis_type, notes, lang):
             content = content.decode("utf-8", errors="ignore")[:1000]
         file_info.append({"name": name, "type": file_type, "size": len(content), "content": content})
 
+    # Fixed prompt with escaped quotes and clearer instructions
     prompt = f"""Analyze these biochemical files: {json.dumps(file_info)}. 
-    Analysis type: {analysis_type.lower()}. Notes: {notes}. Respond in {lang}.
-    Return a JSON with:
-    - "summary": "2-3 sentence overview",
-    - "findings": [{"title": "", "description": "", "severity": "normal|warning|critical"}, ...] (4 items),
-    - "chartData": {"labels": ["Sample 1", ...], "datasets": [{"label": "hemoglobin", "data": [], "color": "#4c72b0"}, ...]},
-    - "anomalies": ["", ...],
-    - "recommendations": ["", ...].
-    Use realistic medical ranges and terminology."""
+Analysis type: {analysis_type.lower()}. Notes: {notes}. Respond in {lang}.
+Return a JSON string with the following structure:
+- "summary": a 2-3 sentence overview,
+- "findings": an array of 4 objects, each with "title" (string), "description" (string), and "severity" (string, one of: "normal", "warning", "critical"),
+- "chartData": an object with "labels" (array of strings like ["Sample 1", "Sample 2", ...]) and "datasets" (array of objects, each with "label" like "hemoglobin", "data" (array of numbers), "color" (hex code like "#4c72b0")),
+- "anomalies": an array of strings,
+- "recommendations": an array of strings.
+Use realistic medical ranges and terminology. Example format:
+{{
+  "summary": "Overview here",
+  "findings": [
+    {{"title": "Finding 1", "description": "Description 1", "severity": "normal"}},
+    {{"title": "Finding 2", "description": "Description 2", "severity": "warning"}},
+    {{"title": "Finding 3", "description": "Description 3", "severity": "critical"}},
+    {{"title": "Finding 4", "description": "Description 4", "severity": "normal"}}
+  ],
+  "chartData": {{
+    "labels": ["Sample 1", "Sample 2", "Sample 3"],
+    "datasets": [
+      {{"label": "hemoglobin", "data": [14.5, 15.0, 14.2], "color": "#4c72b0"}},
+      {{"label": "glucose", "data": [90, 95, 88], "color": "#dd8452"}}
+    ]
+  }},
+  "anomalies": ["Anomaly 1"],
+  "recommendations": ["Recommendation 1"]
+}}
+"""
 
     payload = {
         "contents": [
