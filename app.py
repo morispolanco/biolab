@@ -7,7 +7,7 @@ from io import BytesIO
 import plotly.graph_objects as go
 
 # API Configuration using st.secrets
-API_KEY = st.secrets["API_KEY"]  # Access the API key from secrets
+API_KEY = st.secrets["API_KEY"]
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={API_KEY}"
 
 # Supported languages
@@ -178,13 +178,13 @@ def analyze_files(files, analysis_type, notes, lang):
 
     prompt = f"""Analyze these biochemical files: {json.dumps(file_info)}. 
 Analysis type: {analysis_type.lower()}. Notes: {notes}. Respond in {lang}.
-Return a JSON string with the following structure:
+Return only a valid JSON string with the following structure:
 - "summary": a 2-3 sentence overview,
 - "findings": an array of 4 objects, each with "title" (string), "description" (string), and "severity" (string, one of: "normal", "warning", "critical"),
 - "chartData": an object with "labels" (array of strings like ["Sample 1", "Sample 2", ...]) and "datasets" (array of objects, each with "label" like "hemoglobin", "data" (array of numbers), "color" (hex code like "#4c72b0")),
 - "anomalies": an array of strings,
 - "recommendations": an array of strings.
-Ensure the response is a valid JSON string. Use realistic medical ranges and terminology. Example:
+Do not include any prefix like "json" or extra text outside the JSON. Use realistic medical ranges and terminology. Example:
 {{
   "summary": "The analysis shows mostly normal results with a slight elevation in triglycerides.",
   "findings": [
@@ -226,20 +226,22 @@ Ensure the response is a valid JSON string. Use realistic medical ranges and ter
     response = requests.post(API_URL, headers={"Content-Type": "application/json"}, json=payload)
     if response.status_code != 200:
         raise Exception(f"API request failed: {response.status_code} - {response.text}")
-    
-    # Debugging: Print raw response to inspect it
-    st.write("Raw API response:", response.text)  # Temporary for debugging
-    
+
+    # Extract and clean the inner JSON string
     try:
-        data = json.loads(response.text)
+        outer_data = json.loads(response.text)
+        inner_json_str = outer_data["candidates"][0]["content"]["parts"][0]["text"]
+        # Remove any leading/trailing whitespace or unexpected prefixes
+        inner_json_str = inner_json_str.strip()
+        data = json.loads(inner_json_str)
+        
+        # Validate required keys
         required_keys = ["summary", "findings", "chartData", "anomalies", "recommendations"]
         if not all(key in data for key in required_keys):
             raise ValueError(f"Response missing required keys: {', '.join(set(required_keys) - set(data.keys()))}")
         return data
-    except json.JSONDecodeError as e:
-        raise Exception(f"Failed to parse API response as JSON: {response.text}") from e
-    except ValueError as e:
-        raise Exception(f"Invalid response structure: {str(e)} - Response: {response.text}")
+    except (json.JSONDecodeError, KeyError, ValueError) as e:
+        raise Exception(f"Failed to parse or validate API response: {response.text}") from e
 
 def display_results(data, texts, lang):
     st.header(texts["results"])
