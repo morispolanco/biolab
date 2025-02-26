@@ -6,8 +6,8 @@ import os
 from io import BytesIO
 import plotly.graph_objects as go
 
-# API Configuration
-API_KEY = "AIzaSyBYB7NK1nkDg7Y2tno6aU8bWbWFMK65LYo"  # Replace with st.secrets["API_KEY"] for security
+# API Configuration using st.secrets
+API_KEY = st.secrets["API_KEY"]  # Access the API key from secrets
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={API_KEY}"
 
 # Supported languages
@@ -106,14 +106,11 @@ if "uploaded_files" not in st.session_state:
 
 # Main app
 def main():
-    # Language selection
     lang = st.sidebar.selectbox("Idioma / Language", options=list(LANGUAGES.keys()), format_func=lambda x: LANGUAGES[x], index=0)
     texts = TRANSLATIONS.get(lang, TRANSLATIONS["es"])
 
-    # Title
     st.title(texts["title"])
 
-    # Sidebar inputs
     st.sidebar.header(texts["upload"])
     uploaded_files = st.sidebar.file_uploader("Archivos / Files", type=["csv", "txt", "pdf", "jpg", "jpeg", "png", "xlsx"], accept_multiple_files=True)
     if uploaded_files:
@@ -124,12 +121,10 @@ def main():
 
     analyze_btn = st.sidebar.button(texts["analyze"], disabled=not st.session_state.uploaded_files)
 
-    # Demo section
     st.sidebar.header(texts["demo_header"])
     st.sidebar.write(texts["demo_description"])
     demo_btn = st.sidebar.button(texts["demo_btn"])
 
-    # Main content
     if demo_btn:
         with st.spinner("Analizando datos de demostración... / Analyzing demo data..."):
             try:
@@ -157,7 +152,6 @@ def main():
     else:
         st.info(f"{texts['no_analysis']}: {texts['no_analysis_desc']}")
 
-    # New Analysis button
     if st.session_state.analysis_data and st.sidebar.button(texts["new_analysis"]):
         st.session_state.analysis_data = None
         st.session_state.uploaded_files = []
@@ -182,7 +176,6 @@ def analyze_files(files, analysis_type, notes, lang):
             content = content.decode("utf-8", errors="ignore")[:1000]
         file_info.append({"name": name, "type": file_type, "size": len(content), "content": content})
 
-    # Fixed prompt with escaped quotes and clearer instructions
     prompt = f"""Analyze these biochemical files: {json.dumps(file_info)}. 
 Analysis type: {analysis_type.lower()}. Notes: {notes}. Respond in {lang}.
 Return a JSON string with the following structure:
@@ -191,14 +184,14 @@ Return a JSON string with the following structure:
 - "chartData": an object with "labels" (array of strings like ["Sample 1", "Sample 2", ...]) and "datasets" (array of objects, each with "label" like "hemoglobin", "data" (array of numbers), "color" (hex code like "#4c72b0")),
 - "anomalies": an array of strings,
 - "recommendations": an array of strings.
-Use realistic medical ranges and terminology. Example format:
+Ensure the response is a valid JSON string. Use realistic medical ranges and terminology. Example:
 {{
-  "summary": "Overview here",
+  "summary": "The analysis shows mostly normal results with a slight elevation in triglycerides.",
   "findings": [
-    {{"title": "Finding 1", "description": "Description 1", "severity": "normal"}},
-    {{"title": "Finding 2", "description": "Description 2", "severity": "warning"}},
-    {{"title": "Finding 3", "description": "Description 3", "severity": "critical"}},
-    {{"title": "Finding 4", "description": "Description 4", "severity": "normal"}}
+    {{"title": "Hemoglobin", "description": "Within normal range at 14.5 g/dL.", "severity": "normal"}},
+    {{"title": "Glucose", "description": "Normal at 90 mg/dL.", "severity": "normal"}},
+    {{"title": "Cholesterol", "description": "Slightly high at 190 mg/dL.", "severity": "warning"}},
+    {{"title": "Triglycerides", "description": "Elevated at 160 mg/dL.", "severity": "critical"}}
   ],
   "chartData": {{
     "labels": ["Sample 1", "Sample 2", "Sample 3"],
@@ -207,8 +200,8 @@ Use realistic medical ranges and terminology. Example format:
       {{"label": "glucose", "data": [90, 95, 88], "color": "#dd8452"}}
     ]
   }},
-  "anomalies": ["Anomaly 1"],
-  "recommendations": ["Recommendation 1"]
+  "anomalies": ["Elevated triglycerides detected."],
+  "recommendations": ["Consider dietary changes to lower triglycerides."]
 }}
 """
 
@@ -233,16 +226,27 @@ Use realistic medical ranges and terminology. Example format:
     response = requests.post(API_URL, headers={"Content-Type": "application/json"}, json=payload)
     if response.status_code != 200:
         raise Exception(f"API request failed: {response.status_code} - {response.text}")
-    return json.loads(response.text)
+    
+    # Debugging: Print raw response to inspect it
+    st.write("Raw API response:", response.text)  # Temporary for debugging
+    
+    try:
+        data = json.loads(response.text)
+        required_keys = ["summary", "findings", "chartData", "anomalies", "recommendations"]
+        if not all(key in data for key in required_keys):
+            raise ValueError(f"Response missing required keys: {', '.join(set(required_keys) - set(data.keys()))}")
+        return data
+    except json.JSONDecodeError as e:
+        raise Exception(f"Failed to parse API response as JSON: {response.text}") from e
+    except ValueError as e:
+        raise Exception(f"Invalid response structure: {str(e)} - Response: {response.text}")
 
 def display_results(data, texts, lang):
     st.header(texts["results"])
 
-    # Summary
     st.subheader("Resumen" if lang == "es" else "Résumé" if lang == "fr" else "Resumo" if lang == "pt" else "Summary")
     st.write(data["summary"])
 
-    # Chart
     st.subheader("Visualización de Datos" if lang == "es" else "Visualisation des Données" if lang == "fr" else "Visualização de Dados" if lang == "pt" else "Data Visualization")
     fig = go.Figure()
     for dataset in data["chartData"]["datasets"]:
@@ -255,14 +259,12 @@ def display_results(data, texts, lang):
         ))
     st.plotly_chart(fig, use_container_width=True)
 
-    # Detailed Findings
     st.subheader("Hallazgos Detallados" if lang == "es" else "Résultats Détaillés" if lang == "fr" else "Descobertas Detalhadas" if lang == "pt" else "Detailed Findings")
     for finding in data["findings"]:
         severity_color = {"normal": "blue", "warning": "orange", "critical": "red"}
         st.markdown(f"**{finding['title']}** (*{finding['severity']}*)", unsafe_allow_html=True)
         st.write(finding["description"])
 
-    # Anomalies and Recommendations
     if data["anomalies"]:
         st.subheader("Anomalías" if lang == "es" else "Anomalies" if lang == "fr" else "Anomalias" if lang == "pt" else "Anomalies")
         st.write(", ".join(data["anomalies"]))
@@ -270,7 +272,6 @@ def display_results(data, texts, lang):
         st.subheader("Recomendaciones" if lang == "es" else "Recommandations" if lang == "fr" else "Recomendações" if lang == "pt" else "Recommendations")
         st.write(", ".join(data["recommendations"]))
 
-    # Interactive Query
     st.subheader(texts["query"])
     query = st.text_input("Pregunta" if lang == "es" else "Question" if lang == "fr" else "Pergunta" if lang == "pt" else "Question", placeholder=texts["query_placeholder"])
     if st.button(texts["query_btn"]) and query:
