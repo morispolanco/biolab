@@ -158,7 +158,7 @@ def main():
         st.rerun()
 
 def analyze_files(files, analysis_type, notes, lang):
-    file_info = []
+    file_info = [] 
     for file in files:
         if isinstance(file, str):  # Demo file path
             with open(file, "rb") as f:
@@ -171,7 +171,7 @@ def analyze_files(files, analysis_type, notes, lang):
             file_type = file.type
 
         if file_type.startswith("image"):
-            content = base64.b64encode(content).decode("utf-8")[:1000]
+            content = base64.b64encode(content).decode("utf-8", errors="ignore")[:1000]
         else:
             content = content.decode("utf-8", errors="ignore")[:1000]
         file_info.append({"name": name, "type": file_type, "size": len(content), "content": content})
